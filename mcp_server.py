@@ -32,7 +32,7 @@ from fastmcp.server import FastMCP, Context
 # =========================
 # 데이터 파일 경로를 스크립트 위치 기준으로 안전하게 계산
 ROOT_DIR = Path(__file__).resolve().parent
-DATA_PATH = ROOT_DIR / "data" / "mct_sample_with_persona_3_mapped_final.csv"  # '슈머유형', 'A_STAGE' 포함 CSV
+DATA_PATH = ROOT_DIR / "data" / "final_data_with_q2_kpi.csv"  
 
 # 브랜드 후보 컬럼 우선순위(존재하는 첫 컬럼 사용)
 BRAND_COL_CANDIDATES = [
@@ -178,6 +178,48 @@ mcp = FastMCP(
 )
 
 # -------------------------
+# 통합검색 도구 
+# -------------------------
+@mcp.tool
+def search_merchants(query: str) -> Dict[str, Any]:
+    """
+    가맹점명(부분/마스킹 일치) 또는 가맹점구분번호(완전 일치)로 가맹점을 검색합니다.
+    검색 결과가 여러 개일 경우, 선택 가능한 목록을 반환합니다.
+    
+    매개변수:
+      - query: 검색어 (예: "성우**", "16184E93D9")
+    """
+    if DF is None: _load_df()
+
+    normalized_query = _normalize(query).replace("*", "")
+    if not normalized_query:
+        return {"count": 0, "merchants": [], "reason": "빈 검색어"}
+
+    # 가맹점구분번호로 검색 시도 (숫자와 알파벳으로만 구성된 긴 문자열)
+    if re.fullmatch(r'[a-z0-9]{10,}', normalized_query):
+        mask = DF['가맹점구분번호'].astype(str).str.lower() == normalized_query
+        matched_df = DF[mask]
+    # 가맹점명으로 검색
+    else:
+        ser = DF[BRAND_COL].astype(str)
+        mask = ser.map(lambda x: normalized_query in _normalize(x))
+        matched_df = DF[mask]
+
+    count = len(matched_df)
+    if count == 0:
+        return {"count": 0, "merchants": [], "reason": "검색 결과 없음"}
+
+    # 사용자 선택에 필요한 최소한의 정보만 추출하여 반환
+    merchants = matched_df[[
+        '가맹점구분번호', BRAND_COL, '가맹점주소'
+    ]].rename(columns={BRAND_COL: '가맹점명'}).to_dict(orient='records')[:10] # 최대 10개만
+
+    return {
+        "count": count,
+        "merchants": merchants
+    }
+
+# -------------------------
 # 검색: 부분일치 후보
 # -------------------------
 @mcp.tool
@@ -301,6 +343,54 @@ def recommend_channels(brand_query: str, prefer_stage: Optional[str] = None) -> 
             "delivery_additional": extra,  # 배달 높은 경우 추가
         },
     }
+
+# -------------------------
+# Q2
+# -------------------------
+@mcp.tool
+def analyze_low_revisit_store(merchant_id: str) -> Dict[str, Any]:
+    """
+    재방문율이 낮은 특정 가맹점(merchant_id)의 7P 마케팅 믹스 지표를 종합적으로 분석하여 반환합니다. 
+    
+    매개변수:
+      - merchant_id: 분석할 가맹점의 ID (가맹점구분번호)
+    
+    반환값:
+      - 7P 분석 지표가 담긴 딕셔너리
+    """
+    if DF is None: _load_df()
+    
+    # 가맹점 구분번호는 문자열 타입으로 비교해야 정확합니다.
+    store_data = DF[DF['가맹점구분번호'].astype(str) == str(merchant_id)]
+    
+    if len(store_data) == 0:
+        return {"found": False, "message": f"'{merchant_id}' 가맹점을 찾을 수 없습니다."}
+    
+    # 동일 가맹점의 여러 월 데이터가 있을 경우, 최신 월을 기준으로 분석합니다.
+    result = store_data.sort_values(by='기준년월', ascending=False).iloc[0].to_dict()
+    
+    # 에이전트가 분석하기 쉽도록 7P 기준으로 데이터를 구조화하여 반환합니다.
+    report = {
+        "found": True,
+        "merchant_name": result.get("가맹점명"),
+        "product": {
+            "revisit_rank": result.get("PCT_REVISIT"),
+            "rtf_rank": result.get("PCT_RTF"),
+            "sales_rank": result.get("PCT_SALES"),
+            "customer_type": result.get("CUSTOMER_TYPE")
+        },
+        "price": {
+            "price_rank": result.get("PCT_PRICE")
+        },
+        "place": {
+            "tenure_rank": result.get("PCT_TENURE")
+        },
+        "process": {
+            "process_score_rank": result.get("PCT_PROCESS")
+        }
+    }
+    return report
+
 
 
 # -------------------------
