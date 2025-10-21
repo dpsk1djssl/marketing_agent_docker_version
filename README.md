@@ -29,7 +29,7 @@ https://shcard2025bigcontest.streamlit.app/
 ```bash
 # On macOS and Linux.
 # git소스 복사하기
-git clone https://github.com/thjeong/shcard_2025_bigcontest
+git clone https://github.com/dpsk1djssl/marketing_agent
 cd shcard_2025_bigcontest
 
 # venv 환경 설정 (사전에 uv 설치가 필요합니다. 아래 항목 참조)
@@ -51,7 +51,7 @@ uv run streamlit run streamlit_app.py
 ```bat
 :: On Windows
 :: git 소스 복사하기
-git clone https://github.com/thjeong/shcard_2025_bigcontest
+git clone https://github.com/dpsk1djssl/marketing_agent
 cd shcard_2025_bigcontest
 
 :: venv 환경 설정 (사전에 uv 설치가 필요합니다. 아래 항목 참조)
