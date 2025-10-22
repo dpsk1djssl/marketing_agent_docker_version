@@ -1,25 +1,25 @@
-# --- API 서버 ---
+# FastAPI
 fastapi>=0.115.0,<0.116.0
 uvicorn[standard]>=0.30.0,<0.31.0
 
-# --- LangChain / LangGraph ---
+# LangChain
 langchain>=0.2.0,<0.3.0
-# (선택 1) langchain-core는 langchain이 끌어오므로 생략 권장
-# langchain-core>=0.2.0,<0.3.0  # ← 유지하려면 langchain과 같은 마이너로
+
+# LangGraph  
 langgraph>=0.2.0,<0.3.0
 langchain-google-genai>=1.0.0,<2.0.0
-langchain-mcp-adapters>=0.1.0,<0.2.0  # ⭐ 필수 유지
+langchain-mcp-adapters>=0.1.0,<0.2.0
 
-# --- MCP (Model Context Protocol) ---
+# MCP
 mcp>=1.13.1,<2.0.0
 fastmcp>=2.11.0,<3.0.0
 
-# --- 데이터/수치 ---
+# Data
 pandas>=2.2.2,<3.0.0
 numpy>=1.26,<2.0
 
-# --- Google Generative AI SDK ---
-google-generativeai>=0.8.0,<1.0.0
+# Google AI (구 SDK - langchain 호환)
+google-generativeai>=0.7.0,<0.8.0
 
-# --- 추가 권장 (안정성) ---
+# Pydantic
 pydantic>=2.0.0,<3.0.0
