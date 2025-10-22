@@ -60,9 +60,8 @@ def get_history(session_id: str) -> ChatMessageHistory:
     hist = _STORE.get(session_id)
     if hist is None:
         hist = ChatMessageHistory()
-        # 초기 히스토리: 시스템 프롬프트 + 첫 인사
+        # 초기 히스토리: 시스템 프롬프트만 (AIMessage 제거!)
         hist.add_message(SystemMessage(content=SYSTEM_PROMPT))
-        hist.add_message(AIMessage(content=GREETING))
         _STORE[session_id] = hist
     return hist
 
@@ -159,8 +158,9 @@ async def chat(req: ChatRequest):
                     history_messages_key="messages",
                 )
 
-                # 토큰 절약(선택)
+                # 토큰 절약(선택) 및 첫 메시지 확인
                 hist = get_history(req.session_id)
+                is_first_message = len(hist.messages) == 1  # SystemMessage만 있으면 첫 메시지
                 trim_history(hist, max_pairs=6)
 
                 # 이번 턴의 입력만 HumanMessage로 전달하면,
@@ -172,6 +172,11 @@ async def chat(req: ChatRequest):
 
                 # LangGraph 표준 응답: 마지막 메시지가 어시스턴트
                 reply = result["messages"][-1].content
+                
+                # 첫 메시지인 경우 GREETING 추가
+                if is_first_message:
+                    reply = GREETING + "\n\n" + reply
+
                 return {"reply": reply}
 
             except Exception as e:
