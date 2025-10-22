@@ -9,8 +9,10 @@ langchain-community==0.2.19
 # LangGraph (0.2.x pinned)
 langgraph==0.2.76
 
-# Google GenAI adapter (uses new google-genai SDK transitively)
-langchain-google-genai==2.1.12
+# Google GenAI adapter
+# Note: 2.1.x requires langchain-core >= 0.3.75 which conflicts with LangChain 0.2.x
+# Use 2.0.0 which is compatible with LangChain 0.2.x
+langchain-google-genai==2.0.0
 
 # MCP
 mcp==1.18.0
