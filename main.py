@@ -75,7 +75,11 @@ def trim_history(hist: ChatMessageHistory, max_pairs: int = 6) -> None:
     pairs = msgs[1:]
     if len(pairs) > max_pairs * 2:
         pairs = pairs[-max_pairs * 2:]
-    hist.messages = sys + pairs
+    # 일부 버전에서 속성 재할당보다 슬라이스 대입이 더 안전함
+    try:
+        hist.messages[:] = sys + pairs
+    except Exception:
+        hist.messages = sys + pairs
 
 
 # ==============================
