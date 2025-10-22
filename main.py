@@ -158,10 +158,9 @@ async def chat(req: ChatRequest):
                     history_messages_key="messages",
                 )
 
-                # 토큰 절약(선택) 및 첫 메시지 확인
+                # 첫 메시지 확인
                 hist = get_history(req.session_id)
                 is_first_message = len(hist.messages) == 1  # SystemMessage만 있으면 첫 메시지
-                trim_history(hist, max_pairs=6)
 
                 # 이번 턴의 입력만 HumanMessage로 전달하면,
                 # 과거 히스토리는 with_history가 자동 병합
@@ -169,6 +168,9 @@ async def chat(req: ChatRequest):
                     {"messages": [HumanMessage(content=req.user_message)]},
                     config={"configurable": {"session_id": req.session_id}},
                 )
+
+                # 응답 받은 후 토큰 절약 (선택)
+                trim_history(hist, max_pairs=6)
 
                 # LangGraph 표준 응답: 마지막 메시지가 어시스턴트
                 reply = result["messages"][-1].content
