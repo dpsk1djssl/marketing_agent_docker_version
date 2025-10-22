@@ -4,6 +4,7 @@ uvicorn[standard]
 
 # LangChain
 langchain
+langchain-community
 
 # LangGraph  
 langgraph
