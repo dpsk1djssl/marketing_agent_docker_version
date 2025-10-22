@@ -19,7 +19,7 @@ from langchain_mcp_adapters.tools import load_mcp_tools
 
 
 # ==============================
-# 설정 (기존 system_prompt / greeting 그대로)
+# 설정
 # ==============================
 SYSTEM_PROMPT = """
 당신은 신한카드 빅데이터 기반의 전문 마케팅 컨설턴트입니다. 사용자의 요청을 분석하여 아래의 절차에 따라 임무를 수행합니다.
@@ -52,30 +52,25 @@ GREETING = "마케팅이 필요한 가맹점을 알려주세요  \n(조회가능
 
 
 # ==============================
-# 인메모리 히스토리 저장소 (프로세스 휘발)
+# 인메모리 히스토리 저장소
 # ==============================
 _STORE: Dict[str, ChatMessageHistory] = {}
 
 def get_history(session_id: str) -> ChatMessageHistory:
+    """세션별 히스토리 반환. 초기에는 빈 히스토리."""
     hist = _STORE.get(session_id)
     if hist is None:
         hist = ChatMessageHistory()
-        # 초기 히스토리는 비어있음
+        # 초기에는 아무것도 추가하지 않음!
         _STORE[session_id] = hist
     return hist
 
 def trim_history(hist: ChatMessageHistory, max_pairs: int = 6) -> None:
-    """토큰 절약용(선택): 최근 max_pairs 쌍만 유지."""
+    """토큰 절약용: 최근 max_pairs 쌍만 유지."""
     msgs = hist.messages
-    if not msgs:
-        return
-    # SystemMessage 없이 최근 대화만 유지
     if len(msgs) > max_pairs * 2:
-        msgs = msgs[-max_pairs * 2:]
-        try:
-            hist.messages[:] = msgs
-        except Exception:
-            hist.messages = msgs
+        # 최근 N개 대화쌍만 유지
+        hist.messages = msgs[-max_pairs * 2:]
 
 
 # ==============================
@@ -83,7 +78,6 @@ def trim_history(hist: ChatMessageHistory, max_pairs: int = 6) -> None:
 # ==============================
 app = FastAPI(title="Merchant Marketing Agent API (Contest Demo)")
 
-# 필요 시 특정 오리진으로 제한
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -118,7 +112,7 @@ async def chat(req: ChatRequest):
     """
     - 인메모리 세션별 히스토리 유지
     - MCP stdio 세션은 요청마다 안전하게 열고 닫음
-    - LangGraph ReAct agent + RunnableWithMessageHistory 로 과거 히스토리 자동 병합
+    - LangGraph ReAct agent + RunnableWithMessageHistory
     """
     if "GOOGLE_API_KEY" not in os.environ:
         raise HTTPException(status_code=500, detail="GOOGLE_API_KEY is not set in environment variables.")
@@ -130,9 +124,9 @@ async def chat(req: ChatRequest):
         temperature=0.1,
     )
 
-    # MCP 서버 파라미터 (Docker/서버 배포용: uv 불필요)
+    # MCP 서버 파라미터
     server_params = StdioServerParameters(
-        command="python",          # 또는 "python3"
+        command="python",
         args=["mcp_server.py"],
         env=None
     )
@@ -144,16 +138,14 @@ async def chat(req: ChatRequest):
                 await mcp_session.initialize()
                 tools = await load_mcp_tools(mcp_session)
                 
-                # ReAct agent 생성 시 system prompt 전달
+                # ReAct agent 생성 (SystemMessage는 state_modifier로 전달!)
                 agent = create_react_agent(
                     llm, 
                     tools,
-                    state_modifier=SYSTEM_PROMPT  # SystemMessage 대신 여기서 전달
+                    state_modifier=SYSTEM_PROMPT
                 )
 
-                # RunnableWithMessageHistory 구성:
-                # - input_messages_key/history_messages_key 둘 다 "messages"
-                # - 세션 ID에 해당하는 ChatMessageHistory를 자동 병합/저장
+                # RunnableWithMessageHistory 구성
                 with_history = RunnableWithMessageHistory(
                     agent,
                     get_session_history=lambda sid: get_history(sid),
@@ -161,21 +153,20 @@ async def chat(req: ChatRequest):
                     history_messages_key="messages",
                 )
 
-                # 첫 메시지 확인
+                # 첫 메시지 확인 (ainvoke 전에!)
                 hist = get_history(req.session_id)
-                is_first_message = len(hist.messages) == 0  # 히스토리가 비어있으면 첫 메시지
+                is_first_message = len(hist.messages) == 0
 
-                # 이번 턴의 입력만 HumanMessage로 전달하면,
-                # 과거 히스토리는 with_history가 자동 병합
+                # Agent 실행
                 result = await with_history.ainvoke(
                     {"messages": [HumanMessage(content=req.user_message)]},
                     config={"configurable": {"session_id": req.session_id}},
                 )
 
-                # 응답 받은 후 토큰 절약 (선택)
+                # 응답 받은 후 토큰 절약
                 trim_history(hist, max_pairs=6)
 
-                # LangGraph 표준 응답: 마지막 메시지가 어시스턴트
+                # AI 응답 추출
                 reply = result["messages"][-1].content
                 
                 # 첫 메시지인 경우 GREETING 추가
