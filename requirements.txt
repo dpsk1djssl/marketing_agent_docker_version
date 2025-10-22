@@ -15,7 +15,7 @@ langchain-google-genai>=2.0.0,<3
 # MCP
 mcp>=1.1.0,<2
 langchain-mcp-adapters>=0.1.2,<0.2
-fastmcp>=0.5.0,<1
+fastmcp>=2,<3
 
 # Data
 pandas>=2.2,<3
