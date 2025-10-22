@@ -1,15 +1,12 @@
-# main.py
+#main.py
 import os
-from typing import Dict
+from typing import Dict, List
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
-from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain_core.runnables.history import RunnableWithMessageHistory
-
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, BaseMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
 
@@ -54,29 +51,30 @@ GREETING = "마케팅이 필요한 가맹점을 알려주세요  \n(조회가능
 # ==============================
 # 인메모리 히스토리 저장소
 # ==============================
-_STORE: Dict[str, ChatMessageHistory] = {}
+_STORE: Dict[str, List[BaseMessage]] = {}
 
-def get_history(session_id: str) -> ChatMessageHistory:
-    """세션별 히스토리 반환. 초기에는 빈 히스토리."""
-    hist = _STORE.get(session_id)
-    if hist is None:
-        hist = ChatMessageHistory()
-        # 초기에는 아무것도 추가하지 않음!
-        _STORE[session_id] = hist
-    return hist
+def get_history(session_id: str) -> List[BaseMessage]:
+    """세션별 메시지 히스토리 반환"""
+    if session_id not in _STORE:
+        _STORE[session_id] = []
+    return _STORE[session_id]
 
-def trim_history(hist: ChatMessageHistory, max_pairs: int = 6) -> None:
-    """토큰 절약용: 최근 max_pairs 쌍만 유지."""
-    msgs = hist.messages
-    if len(msgs) > max_pairs * 2:
-        # 최근 N개 대화쌍만 유지
-        hist.messages = msgs[-max_pairs * 2:]
+def add_message(session_id: str, message: BaseMessage):
+    """메시지 추가"""
+    hist = get_history(session_id)
+    hist.append(message)
+
+def trim_history(session_id: str, max_pairs: int = 6):
+    """최근 N개 대화쌍만 유지"""
+    hist = get_history(session_id)
+    if len(hist) > max_pairs * 2:
+        _STORE[session_id] = hist[-max_pairs * 2:]
 
 
 # ==============================
 # FastAPI 앱
 # ==============================
-app = FastAPI(title="Merchant Marketing Agent API (Contest Demo)")
+app = FastAPI(title="Merchant Marketing Agent API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -110,9 +108,7 @@ async def reset(req: ResetRequest):
 @app.post("/chat")
 async def chat(req: ChatRequest):
     """
-    - 인메모리 세션별 히스토리 유지
-    - MCP stdio 세션은 요청마다 안전하게 열고 닫음
-    - LangGraph ReAct agent + RunnableWithMessageHistory
+    수동 히스토리 관리 방식
     """
     if "GOOGLE_API_KEY" not in os.environ:
         raise HTTPException(status_code=500, detail="GOOGLE_API_KEY is not set in environment variables.")
@@ -131,49 +127,44 @@ async def chat(req: ChatRequest):
         env=None
     )
 
-    # 요청마다 MCP 세션 안전하게 생성/종료
-    async with stdio_client(server_params) as (read, write):
-        async with ClientSession(read, write) as mcp_session:
-            try:
+    try:
+        # MCP 세션 시작
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as mcp_session:
                 await mcp_session.initialize()
                 tools = await load_mcp_tools(mcp_session)
                 
-                # ReAct agent 생성 (SystemMessage는 state_modifier로 전달!)
-                agent = create_react_agent(
-                    llm, 
-                    tools,
-                    state_modifier=SYSTEM_PROMPT
-                )
+                # Agent 생성
+                agent = create_react_agent(llm, tools)
 
-                # RunnableWithMessageHistory 구성
-                with_history = RunnableWithMessageHistory(
-                    agent,
-                    get_session_history=lambda sid: get_history(sid),
-                    input_messages_key="messages",
-                    history_messages_key="messages",
-                )
+                # 히스토리 가져오기
+                history = get_history(req.session_id)
+                is_first_message = len(history) == 0
 
-                # 첫 메시지 확인 (ainvoke 전에!)
-                hist = get_history(req.session_id)
-                is_first_message = len(hist.messages) == 0
+                # 현재 대화 구성: SystemMessage + 과거 히스토리 + 현재 메시지
+                messages = [SystemMessage(content=SYSTEM_PROMPT)]
+                messages.extend(history)
+                messages.append(HumanMessage(content=req.user_message))
 
                 # Agent 실행
-                result = await with_history.ainvoke(
-                    {"messages": [HumanMessage(content=req.user_message)]},
-                    config={"configurable": {"session_id": req.session_id}},
-                )
-
-                # 응답 받은 후 토큰 절약
-                trim_history(hist, max_pairs=6)
+                result = await agent.ainvoke({"messages": messages})
 
                 # AI 응답 추출
-                reply = result["messages"][-1].content
-                
-                # 첫 메시지인 경우 GREETING 추가
+                ai_message = result["messages"][-1]
+                reply = ai_message.content
+
+                # 히스토리에 저장 (SystemMessage 제외하고 User/AI만)
+                add_message(req.session_id, HumanMessage(content=req.user_message))
+                add_message(req.session_id, AIMessage(content=reply))
+
+                # 토큰 절약
+                trim_history(req.session_id, max_pairs=6)
+
+                # 첫 메시지면 GREETING 추가
                 if is_first_message:
                     reply = GREETING + "\n\n" + reply
 
                 return {"reply": reply}
 
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Agent/MCP error: {e!r}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Agent/MCP error: {e!r}")
