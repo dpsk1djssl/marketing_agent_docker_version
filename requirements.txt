@@ -1,25 +1,25 @@
 # FastAPI
-fastapi>=0.110,<0.116
-uvicorn[standard]>=0.29,<0.31
+fastapi==0.115.14
+uvicorn[standard]==0.30.6
 
-# LangChain stack (0.2.x)
-langchain>=0.2.10,<0.3
-langchain-community>=0.2.6,<0.3
+# LangChain stack (0.2.x pinned)
+langchain==0.2.17
+langchain-community==0.2.19
 
-# LangGraph (0.2.x)
-langgraph>=0.2.10,<0.3
+# LangGraph (0.2.x pinned)
+langgraph==0.2.76
 
 # Google GenAI adapter (uses new google-genai SDK transitively)
-langchain-google-genai>=2.0.0,<3
+langchain-google-genai==2.1.12
 
 # MCP
-mcp>=1.1.0,<2
-langchain-mcp-adapters>=0.1.2,<0.2
-fastmcp>=2,<3
+mcp==1.18.0
+langchain-mcp-adapters==0.1.11
+fastmcp==2.12.5
 
 # Data
-pandas>=2.2,<3
-numpy>=1.26,<3
+pandas==2.2.2
+numpy==1.26.4
 
 # Pydantic v2
-pydantic>=2.7,<3
+pydantic==2.9.2
