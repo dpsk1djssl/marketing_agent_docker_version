@@ -2,16 +2,16 @@
 fastapi==0.115.14
 uvicorn[standard]==0.32.1
 
-# LangChain stack (0.2.x)
-langchain==0.2.17
-langchain-community==0.2.19
-langchain-core==0.2.43
+# LangChain stack (0.3.x로 업그레이드!)
+langchain==0.3.17
+langchain-community==0.3.17
+langchain-core==0.3.75
 
 # LangGraph
 langgraph==0.2.76
 
-# Google GenAI adapter
-langchain-google-genai==1.0.7
+# Google GenAI adapter (0.3 호환 버전)
+langchain-google-genai==2.1.12
 
 # MCP
 mcp==1.18.0
