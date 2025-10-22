@@ -2,16 +2,15 @@
 fastapi==0.115.14
 uvicorn[standard]==0.30.6
 
-# LangChain stack (0.2.x pinned)
+# LangChain stack (0.2.x)
 langchain==0.2.17
 langchain-community==0.2.19
+langchain-core==0.2.43
 
-# LangGraph (0.2.x pinned)
+# LangGraph
 langgraph==0.2.76
 
-# Google GenAI adapter
-# Note: 2.x requires langchain-core >= 0.3.x and conflicts with LangChain 0.2.x
-# Use 1.x which is compatible with langchain-core < 0.3
+# Google GenAI adapter (다운그레이드)
 langchain-google-genai==1.0.7
 
 # MCP
@@ -23,5 +22,5 @@ fastmcp==2.12.5
 pandas==2.2.2
 numpy==1.26.4
 
-# Pydantic v2
-pydantic==2.9.2
+# Pydantic v2 (업그레이드! - 중요)
+pydantic==2.11.0
