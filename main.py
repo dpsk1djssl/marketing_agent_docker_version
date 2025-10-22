@@ -60,8 +60,7 @@ def get_history(session_id: str) -> ChatMessageHistory:
     hist = _STORE.get(session_id)
     if hist is None:
         hist = ChatMessageHistory()
-        # 초기 히스토리: 시스템 프롬프트만 (AIMessage 제거!)
-        hist.add_message(SystemMessage(content=SYSTEM_PROMPT))
+        # 초기 히스토리는 비어있음
         _STORE[session_id] = hist
     return hist
 
@@ -70,15 +69,13 @@ def trim_history(hist: ChatMessageHistory, max_pairs: int = 6) -> None:
     msgs = hist.messages
     if not msgs:
         return
-    sys = msgs[:1]  # SystemMessage(최초 1개 가정)
-    pairs = msgs[1:]
-    if len(pairs) > max_pairs * 2:
-        pairs = pairs[-max_pairs * 2:]
-    # 일부 버전에서 속성 재할당보다 슬라이스 대입이 더 안전함
-    try:
-        hist.messages[:] = sys + pairs
-    except Exception:
-        hist.messages = sys + pairs
+    # SystemMessage 없이 최근 대화만 유지
+    if len(msgs) > max_pairs * 2:
+        msgs = msgs[-max_pairs * 2:]
+        try:
+            hist.messages[:] = msgs
+        except Exception:
+            hist.messages = msgs
 
 
 # ==============================
@@ -146,7 +143,13 @@ async def chat(req: ChatRequest):
             try:
                 await mcp_session.initialize()
                 tools = await load_mcp_tools(mcp_session)
-                agent = create_react_agent(llm, tools)
+                
+                # ReAct agent 생성 시 system prompt 전달
+                agent = create_react_agent(
+                    llm, 
+                    tools,
+                    state_modifier=SYSTEM_PROMPT  # SystemMessage 대신 여기서 전달
+                )
 
                 # RunnableWithMessageHistory 구성:
                 # - input_messages_key/history_messages_key 둘 다 "messages"
@@ -160,7 +163,7 @@ async def chat(req: ChatRequest):
 
                 # 첫 메시지 확인
                 hist = get_history(req.session_id)
-                is_first_message = len(hist.messages) == 1  # SystemMessage만 있으면 첫 메시지
+                is_first_message = len(hist.messages) == 0  # 히스토리가 비어있으면 첫 메시지
 
                 # 이번 턴의 입력만 HumanMessage로 전달하면,
                 # 과거 히스토리는 with_history가 자동 병합
