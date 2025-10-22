@@ -1,25 +1,25 @@
 # FastAPI
-fastapi>=0.115.0,<0.116.0
-uvicorn[standard]>=0.30.0,<0.31.0
+fastapi
+uvicorn[standard]
 
 # LangChain
-langchain>=0.2.0,<0.3.0
+langchain
 
 # LangGraph  
-langgraph>=0.2.0,<0.3.0
-langchain-google-genai>=1.0.0,<2.0.0
-langchain-mcp-adapters>=0.1.0,<0.2.0
+langgraph
+langchain-google-genai
+langchain-mcp-adapters
 
 # MCP
-mcp>=1.13.1,<2.0.0
-fastmcp>=2.11.0,<3.0.0
+mcp
+fastmcp
 
 # Data
-pandas>=2.2.2,<3.0.0
-numpy>=1.26,<2.0
+pandas
+numpy
 
 # Google AI (구 SDK - langchain 호환)
-google-generativeai>=0.7.0,<0.8.0
+google-generativeai
 
 # Pydantic
-pydantic>=2.0.0,<3.0.0
+pydantic
