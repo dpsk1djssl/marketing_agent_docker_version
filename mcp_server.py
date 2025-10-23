@@ -391,7 +391,39 @@ def analyze_low_revisit_store(merchant_id: str) -> Dict[str, Any]:
     }
     return report
 
-
+# -------------------------
+# 특화 질문 2: 경쟁 우위 진단
+# -------------------------
+@mcp.tool
+def analyze_competitive_positioning(merchant_id: str) -> Dict[str, Any]:
+    """
+    특정 가맹점(merchant_id)의 매출 및 가격 경쟁력(백분위 순위) 데이터를 조회합니다.
+    
+    매개변수:
+      - merchant_id: 분석할 가맹점의 ID (가맹점구분번호)
+    
+    반환값:
+      - 매출 및 가격 순위 데이터가 담긴 딕셔너리
+    """
+    if DF is None: _load_df() # 데이터 로드 확인
+    
+    # 가맹점 구분번호는 문자열로 비교
+    store_data = DF[DF['가맹점구분번호'].astype(str) == str(merchant_id)]
+    
+    if len(store_data) == 0:
+        return {"found": False, "message": f"'{merchant_id}' 가맹점을 찾을 수 없습니다."}
+    
+    # 최신 월 데이터 기준
+    result = store_data.sort_values(by='기준년월', ascending=False).iloc[0].to_dict()
+    
+    # 에이전트가 사용할 핵심 경쟁 지표만 추출하여 반환
+    report = {
+        "found": True,
+        "merchant_name": result.get("가맹점명"),
+        "sales_rank_percentile": result.get("PCT_SALES"), # 매출 백분위 순위 (0~1)
+        "price_rank_percentile": result.get("PCT_PRICE")  # 가격 백분위 순위 (0~1)
+    }
+    return report
 
 # -------------------------
 # 헬스체크 / 리로드
