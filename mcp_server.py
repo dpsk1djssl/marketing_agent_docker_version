@@ -52,7 +52,8 @@ DELIVERY_RATIO_COLS = [
     "배달 비율",
 ]
 
-# 슈머유형 & A-Stage 기반 추천 테이블
+# 슈머유형 & A-Stage 기반 채널 가이드라인 (LLM이 참고할 기본 방향성)
+# 주의: 이는 "권장 사항"이며, Agent는 상황에 맞게 유연하게 조정할 수 있습니다.
 RECO_TABLE: Dict[str, Dict[str, str]] = {
     "모스트슈머": {
         "A3": "인스타그램 릴스, 틱톡",
@@ -77,6 +78,34 @@ RECO_TABLE: Dict[str, Dict[str, str]] = {
 }
 BASE_CHANNEL = "네이버/카카오/구글맵, 리뷰노트"
 DELIVERY_EXTRA = "배달의민족/쿠팡이츠"
+
+# 슈머유형별 상세 특성 (LLM이 창의적으로 활용할 컨텍스트)
+PERSONA_DETAILS = {
+    "모스트슈머": {
+        "demographics": "평균 연령 39.9세, 젊은 층",
+        "media_behavior": "유튜브·인스타그램·OTT·블로그 모두 활발 이용, SNS·커뮤니티 참여도 높음",
+        "key_traits": "트렌드 민감, 새로움 추구, 시각적 콘텐츠 선호, 빠른 정보 확산력",
+        "marketing_context": "숏폼 비디오와 바이럴 콘텐츠에 반응 좋음, 인플루언서 마케팅 효과적"
+    },
+    "유틸슈머": {
+        "demographics": "평균 연령 44.2세, 여성 비중 높음(56%)",
+        "media_behavior": "포털(네이버·다음) 검색과 뉴스 중심, 메신저·콘텐츠 소비 활발, SNS·OTT는 낮음",
+        "key_traits": "실용성·합리성 중시, 정보 기반 의사결정, 상세한 정보 선호",
+        "marketing_context": "상세 리뷰와 정보성 콘텐츠 중요, 검색 최적화 필수, 입소문 마케팅 효과적"
+    },
+    "비지슈머": {
+        "demographics": "평균 연령 42.4세, 남성 비중 높음(44%)",
+        "media_behavior": "SNS(페이스북·인스타)·OTT 높음, 스트리밍·온라인쇼핑 자주, 뉴스·검색 낮음",
+        "key_traits": "편의성·시간효율 중시, 빠른 의사결정, 모바일 중심",
+        "marketing_context": "짧고 임팩트 있는 콘텐츠, 간편한 구매 프로세스, 타겟 광고 효과적"
+    },
+    "무소슈머": {
+        "demographics": "평균 연령 46.4세, 가장 높은 연령대",
+        "media_behavior": "전반적 이용률 낮음(SNS·OTT·게임·쇼핑 소극적), 정보검색·뉴스 위주",
+        "key_traits": "보수적·신중한 소비, 검증된 정보 선호, 오프라인 선호",
+        "marketing_context": "지역 기반 오프라인 마케팅, 신뢰 구축 중요, 입소문과 추천 효과적"
+    }
+}
 
 # =========================
 # 유틸
@@ -321,6 +350,14 @@ def recommend_channels(brand_query: str, prefer_stage: Optional[str] = None) -> 
         delivery_ratio = _to_percent100(row.get(DELIV_COL))
     include_delivery = delivery_ratio is not None and delivery_ratio >= 50.0
 
+    # 페르소나 상세 정보 가져오기 (LLM이 창의적으로 활용할 컨텍스트)
+    persona_detail = PERSONA_DETAILS.get(cluster, {
+        "demographics": f"{cluster} 고객",
+        "media_behavior": "정보 없음",
+        "key_traits": "정보 없음",
+        "marketing_context": "정보 없음"
+    })
+    
     # 응답 구성
     primary = _split_channels(stage_channels) if stage_channels else []
     base = _split_channels(base_channels)
@@ -332,16 +369,18 @@ def recommend_channels(brand_query: str, prefer_stage: Optional[str] = None) -> 
         "brand": row.get(BRAND_COL),
         "match_mode": match_mode,
         "cluster_type": cluster,           # 슈머유형
+        "persona_details": persona_detail, # 페르소나 상세 특성 (LLM이 창의적으로 활용)
         "a_stage": a_stage_raw,            # 원본 A_STAGE
         "stage_used": stage_key or None,   # 실제 추천에 사용한 스테이지 키(A3/A4/A5)
         "delivery_ratio_col": DELIV_COL,
         "delivery_ratio": delivery_ratio,
         "include_delivery_channels": include_delivery,
-        "recommendations": {
-            "primary_by_stage": primary,   # A3/A4/A5별 주요 채널(2개)
-            "base_channels": base,         # 기본 채널
-            "delivery_additional": extra,  # 배달 높은 경우 추가
+        "channel_suggestions": {
+            "primary_by_stage": primary,   # 기본 추천 채널 (Agent가 조정 가능)
+            "base_channels": base,         # 모든 가맹점 공통 기본 채널
+            "delivery_additional": extra,  # 배달 비중 높을 시 추가 고려
         },
+        "note_to_agent": "제시된 채널은 기본 가이드라인입니다. 페르소나 특성과 마케팅 상황을 종합적으로 고려하여 우선순위를 조정하거나 추가 채널을 제안할 수 있습니다."
     }
 
 # -------------------------
@@ -445,7 +484,175 @@ def reload_data() -> Dict[str, Any]:
     }
 
 
+# ==============================
+# Q3: 현재 가장 큰 문제점 자동 진단
+# ==============================
+
+def _to_pct(v):
+    if pd.isna(v):
+        return None
+    try:
+        v = float(v)
+    except Exception:
+        return None
+    if v <= 1.0:
+        return v * 100.0
+    return v
+
+_Q3_CONTROLLABILITY = {
+    "Price": 50.0,
+    "Place": 35.0,
+    "Promotion": 100.0,
+    "Process": 75.0,
+}
+
+_Q3_DIM_COLS = {
+    "Price": ["PCT_SALES", "PCT_PRICE"],
+    "Place": ["PCT_TENURE", "PCT_CLOSURE", "PCT_ACCESS"],
+    "Promotion": ["PCT_REVISIT", "PCT_RTF", "CRI_PCT", "PCT_A3A4", "PCT_A4A5"],
+    "Process": ["PCT_PROCESS", "PROCESS_SCORE_PCT"],
+}
+
+def _severity_from_series(s: pd.Series, controllability: float) -> Dict[str, Any]:
+    vals = s.dropna().tolist()
+    if not vals:
+        return {"severity": None, "impact": None, "duration": None, "count": 0}
+    impact_vals = [max(0.0, 100.0 - _to_pct(v)) for v in vals]
+    # 최근 6개월 위험 비율은 상위에서 별도로 계산하고 이 함수에서는 단일 시점만 계산
+    impact = sum(impact_vals) / len(impact_vals)
+    # duration은 호출부에서 전달
+    return {"impact": impact, "controllability": controllability}
+
+def _calc_duration(last6: pd.Series) -> float:
+    # 위험구간 PR<30 비율
+    if last6.empty:
+        return 0.0
+    cnt = last6.apply(lambda v: (_to_pct(v) or 0) < 30.0).sum()
+    return (cnt / len(last6)) * 100.0
+
+@mcp.tool(name="analyze_q3", description="Q3: {요식업종 가맹점}의 현재 가장 큰 문제점을 진단하고 근거와 함께 반환합니다. 입력: merchant_id(str).")
+def analyze_q3(merchant_id: str) -> Dict[str, Any]:
+    """
+    입력: merchant_id (e.g., 가맹점구분번호)
+    출력: {
+      ok: bool,
+      merchant_id, merchant_name, baseline_month,
+      step1: { Price: [{col, pr}], ... },
+      step2: { severity_by_P: {...}, current_key_issue: str },
+      step3: { recommended_strategies: [...], evidence_columns: [...] }
+    }
+    """
+    if DF is None:
+        _load_df()
+    df = DF
+
+    # 식별자/이름/월 컬럼 후보
+    id_cols = ["가맹점구분번호"]
+    name_cols = ["가맹점명"]
+    month_cols = ["기준년월"]
+
+    id_col = next((c for c in id_cols if c in df.columns), None)
+    if id_col is None:
+        return {"ok": False, "error": "식별자 컬럼이 없습니다. (가맹점구분번호/MERCHANT_ID 등)"}
+
+    sub = df[df[id_col].astype(str) == str(merchant_id)].copy()
+    if sub.empty:
+        return {"ok": False, "error": f"merchant_id={merchant_id} 데이터가 없습니다."}
+
+    # 최신월 기준
+    mcol = next((c for c in month_cols if c in sub.columns), None)
+    if mcol:
+        sub[mcol] = sub[mcol].astype(str)
+        sub = sub.sort_values(mcol)
+        recent = sub.iloc[-1]
+        # 최근 6개월 슬라이스
+        last6 = sub.iloc[-6:]
+        baseline_month = recent[mcol]
+    else:
+        recent = sub.iloc[-1]
+        last6 = sub.iloc[-6:]
+        baseline_month = None
+
+    name_col = next((c for c in name_cols if c in df.columns), None)
+    merchant_name = str(recent[name_col]) if name_col else None
+
+    # STEP1: P별 현재 PR 나열
+    step1 = {}
+    for dim, cols in _Q3_DIM_COLS.items():
+        present = []
+        for c in cols:
+            if c in sub.columns:
+                present.append({"col": c, "pr": _to_pct(recent[c])})
+        if present:
+            step1[dim] = present
+
+    if not step1:
+        return {"ok": False, "error": "Q3에 사용할 지표 컬럼이 없습니다. (PCT_*, *_PCT 등)"}
+
+    # STEP2: 심각도 산출
+    severity_by_P = {}
+    details = {}
+    for dim, cols in _Q3_DIM_COLS.items():
+        vals = []
+        evid = []
+        for c in cols:
+            if c in sub.columns:
+                controllability = _Q3_CONTROLLABILITY.get(dim, 50.0)
+                # duration: 최근 6개월 기준
+                dur = _calc_duration(last6[c]) if c in last6.columns else 0.0
+                impact = max(0.0, 100.0 - (_to_pct(recent[c]) or 0.0))
+                sev = 0.55*impact + 0.25*dur + 0.20*controllability
+                vals.append(sev)
+                evid.append({"col": c, "impact": impact, "duration": dur, "controllability": controllability, "severity": sev})
+        if vals:
+            severity_by_P[dim] = sum(vals)/len(vals)
+            details[dim] = evid
+
+    if not severity_by_P:
+        return {"ok": False, "error": "심각도 계산에 사용할 유효 지표가 없습니다."}
+
+    current_key_issue = max(severity_by_P, key=severity_by_P.get)
+
+    # STEP3: 전형 전략 매핑
+    strategies = {
+        "Price": [
+            "가격·메뉴 구조 재정비: 인기 메뉴 소형화/세트화로 객단가 탄력 확보",
+            "특정 요일·시간대 차등가로 한가한 시간 수요 이동",
+            "원가 구조 투명화 후 원재료 대체/공급선 다변화"
+        ],
+        "Place": [
+            "상권 브랜딩 협업(동네 축제/상점가 공동 프로모션)으로 외부 유입 보완",
+            "근거리 타겟 쿠폰(반경 500m) 발행으로 생활권 점유율 확대",
+            "접근성 약점 보완: 역세권/정류장 광고 또는 지도앱 스폰서"
+        ],
+        "Promotion": [
+            "첫 방문 경험 설계: 첫 2회차 쿠폰·스탬프 제공으로 A3→A4 전환 촉진",
+            "리뷰/멤버십·N회차 리워드로 A4→A5 충성화 가속",
+            "메신저·카톡채널·지역 커뮤니티 리마인더로 재구매 주기 단축"
+        ],
+        "Process": [
+            "피크타임 메뉴 단순화 및 선결제/QR주문으로 대기시간 단축",
+            "CS 표준화(제공시간 SLA·재조리 원칙)와 직원 교차교육",
+            "재고/발주 자동화로 품절·취소율 저감"
+        ]
+    }
+    recommended = strategies.get(current_key_issue, [])
+
+    return {
+        "ok": True,
+        "merchant_id": str(merchant_id),
+        "merchant_name": merchant_name,
+        "baseline_month": baseline_month,
+        "step1": step1,
+        "step2": {
+            "severity_by_P": severity_by_P,
+            "details": details,
+            "current_key_issue": current_key_issue
+        },
+        "step3": {
+            "recommended_strategies": recommended,
+            "evidence_columns": [e["col"] for e in sum(details.values(), [])]
+        }
+    }
 if __name__ == "__main__":
-    # 개발 로컬 테스트용
-    # uv run python mcp.server.py
     mcp.run()
