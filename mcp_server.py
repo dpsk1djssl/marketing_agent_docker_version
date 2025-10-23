@@ -370,23 +370,27 @@ def analyze_low_revisit_store(merchant_id: str) -> Dict[str, Any]:
     result = store_data.sort_values(by='기준년월', ascending=False).iloc[0].to_dict()
     
     # 에이전트가 분석하기 쉽도록 7P 기준으로 데이터를 구조화하여 반환합니다.
+    # analyze_low_revisit_store 함수 내 report 생성 부분 수정
     report = {
         "found": True,
         "merchant_name": result.get("가맹점명"),
         "product": {
-            "revisit_rank": result.get("PCT_REVISIT"),
-            "rtf_rank": result.get("PCT_RTF"),
-            "sales_rank": result.get("PCT_SALES"),
-            "customer_type": result.get("CUSTOMER_TYPE")
+            "revisit_rank": result.get("PCT_REVISIT"), "revisit_cat": result.get("REVISIT_CAT"),
+            "rtf_rank": result.get("PCT_RTF"), "rtf_cat": result.get("RTF_CAT"),
+            "sales_rank": result.get("PCT_SALES"), "sales_cat": result.get("SALES_CAT"),
+            "customer_type": result.get("CUSTOMER_TYPE") 
         },
         "price": {
-            "price_rank": result.get("PCT_PRICE")
+            "price_rank": result.get("PCT_PRICE"), "price_cat": result.get("PRICE_CAT"),
+            # 신규 Price KPI 추가
+            "similar_price_ratio_rank": result.get("PCT_SIMILAR_PRICE"), 
+            "similar_price_ratio_cat": result.get("SIMILAR_PRICE_CAT") 
         },
-        "place": {
-            "tenure_rank": result.get("PCT_TENURE")
+        "place": { # Place는 기존 TENURE만 유지
+            "tenure_rank": result.get("PCT_TENURE"), "tenure_cat": result.get("TENURE_CAT")
         },
         "process": {
-            "process_score_rank": result.get("PCT_PROCESS")
+            "process_score_rank": result.get("PCT_PROCESS"), "process_cat": result.get("PROCESS_CAT")
         }
     }
     return report
@@ -420,8 +424,10 @@ def analyze_competitive_positioning(merchant_id: str) -> Dict[str, Any]:
     report = {
         "found": True,
         "merchant_name": result.get("가맹점명"),
-        "sales_rank_percentile": result.get("PCT_SALES"), # 매출 백분위 순위 (0~1)
-        "price_rank_percentile": result.get("PCT_PRICE")  # 가격 백분위 순위 (0~1)
+        "sales_rank_percentile": result.get("PCT_SALES"), 
+        "sales_cat": result.get("SALES_CAT"), # 추가
+        "price_rank_percentile": result.get("PCT_PRICE"),
+        "price_cat": result.get("PRICE_CAT") # 추가
     }
     return report
 
