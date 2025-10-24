@@ -434,6 +434,87 @@ def analyze_low_revisit_store(merchant_id: str) -> Dict[str, Any]:
     }
     return report
 
+# ---------------------------------
+# 특화 질문 1: 핵심 고객 분석
+# ---------------------------------
+@mcp.tool
+def analyze_main_customer_segment(merchant_id: str) -> Dict[str, Any]:
+    """
+    특정 가맹점(merchant_id)의 핵심 고객 그룹(상위 1~2개 연령/성별)과 
+    주요 방문 유형(거주/직장/유동)을 분석하여 반환합니다.
+
+    매개변수:
+      - merchant_id: 분석할 가맹점의 ID (가맹점구분번호)
+
+    반환값:
+      - 핵심 고객 세그먼트 및 방문 유형 정보가 담긴 딕셔너리
+    """
+    if DF is None: _load_df() # 데이터 로드 확인
+
+    # 가맹점 구분번호는 문자열로 비교
+    store_data = DF[DF['가맹점구분번호'].astype(str) == str(merchant_id)]
+
+    if len(store_data) == 0:
+        return {"found": False, "message": f"'{merchant_id}' 가맹점을 찾을 수 없습니다."}
+
+    # 최신 월 데이터 기준
+    result = store_data.sort_values(by='기준년월', ascending=False).iloc[0].to_dict()
+
+    # --- 상위 연령/성별 세그먼트 식별 ---
+    age_gender_cols = [
+        "남성 20대이하 고객 비중", "남성 30대 고객 비중", "남성 40대 고객 비중", 
+        "남성 50대 고객 비중", "남성 60대이상 고객 비중",
+        "여성 20대이하 고객 비중", "여성 30대 고객 비중", "여성 40대 고객 비중",
+        "여성 50대 고객 비중", "여성 60대이상 고객 비중",
+    ]
+
+    segment_ratios = {}
+    for col in age_gender_cols:
+        ratio = result.get(col)
+        # 결측치나 유효하지 않은 값은 0으로 처리하여 비교
+        if pd.notna(ratio) and isinstance(ratio, (int, float)): 
+            segment_ratios[col.replace(' 고객 비중','')] = float(ratio) # 깔끔한 이름과 값 저장
+        else:
+            segment_ratios[col.replace(' 고객 비중','')] = 0.0
+
+    # 비율 기준으로 내림차순 정렬 후 상위 1~2개 추출
+    sorted_segments = sorted(segment_ratios.items(), key=lambda item: item[1], reverse=True)
+
+    top_segments = []
+    if sorted_segments:
+        top_segments.append(sorted_segments[0][0]) # 1위는 항상 추가
+        # 2위가 존재하고 비율이 0보다 크면 추가
+        if len(sorted_segments) > 1 and sorted_segments[1][1] > 0: 
+            top_segments.append(sorted_segments[1][0])
+
+    # --- 주요 방문 유형 식별 ---
+    visit_type_cols = {
+        "거주 이용 고객 비율": "거주 고객",
+        "직장 이용 고객 비율": "직장 고객",
+        "유동인구 이용 고객 비율": "유동인구 고객",
+    }
+
+    visit_ratios = {}
+    for col, name in visit_type_cols.items():
+        ratio = result.get(col)
+        if pd.notna(ratio) and isinstance(ratio, (int, float)):
+            visit_ratios[name] = float(ratio)
+        else:
+            visit_ratios[name] = 0.0
+
+    # 가장 높은 비율의 방문 유형 찾기
+    main_visit_type = max(visit_ratios, key=visit_ratios.get) if visit_ratios and sum(visit_ratios.values()) > 0 else "정보 없음"
+
+    # 에이전트에게 전달할 보고서 구성
+    report = {
+        "found": True,
+        # BRAND_COL이 None일 수 있으므로 '가맹점명'도 확인
+        "merchant_name": result.get(BRAND_COL) if BRAND_COL else result.get("가맹점명", "이름 정보 없음"), 
+        "top_segments": top_segments,         # 상위 1~2개 세그먼트 이름 리스트
+        "main_visit_type": main_visit_type    # 가장 비중 높은 방문 유형 이름
+    }
+    return report
+
 # -------------------------
 # 특화 질문 2: 경쟁 우위 진단
 # -------------------------
