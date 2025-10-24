@@ -5,7 +5,7 @@ import numpy as np
 print("Q2 데이터 전처리 스크립트를 시작합니다.")
 
 # 1. 데이터 불러오기
-df = pd.read_csv("data/mct_sample_with_persona_3_mapped_final.csv", encoding="utf-8-sig")
+df = pd.read_csv("data/final_2_q1.csv", encoding="utf-8-sig")
 print(f"데이터 로딩 완료. Shape: {df.shape}")
 
 # ------------------------------------------------------------------- #
