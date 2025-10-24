@@ -32,7 +32,7 @@ from fastmcp.server import FastMCP, Context
 # =========================
 # 데이터 파일 경로를 스크립트 위치 기준으로 안전하게 계산
 ROOT_DIR = Path(__file__).resolve().parent
-DATA_PATH = ROOT_DIR / "data" / "final_data_with_cats.csv"  
+DATA_PATH = ROOT_DIR / "data" / "final_data.csv"  
 
 # 브랜드 후보 컬럼 우선순위(존재하는 첫 컬럼 사용)
 BRAND_COL_CANDIDATES = [
